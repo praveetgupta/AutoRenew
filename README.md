@@ -79,6 +79,16 @@ autorenew renew --all
 
 Finally, turn on **Launch at Login** from the menu-bar icon. From that point renewals are automatic.
 
+### Let it work while you are away
+
+If any of your projects live in `~/Desktop`, `~/Documents`, `~/Downloads`, iCloud Drive or an external volume, macOS gates access to them and puts up a *"AutoRenew would like to access files in your Desktop folder"* dialog the first time a renewal reads one. An unattended renewal stops dead on that dialog, so grant it once up front:
+
+**System Settings → Privacy & Security → Full Disk Access → +** → `/Applications/AutoRenew.app` → toggle it on.
+
+`install.sh` signs the app with your Apple Development identity when you have one, because macOS keys that grant to the app's code signature. An ad-hoc signature is just a hash of the binary, so without a real identity every rebuild produces a new signature and the permission you granted stops applying.
+
+The alternative, if you would rather not grant Full Disk Access: keep your projects somewhere macOS does not gate, such as `~/Developer` or `~/Projects`, and no prompt ever appears.
+
 ## CLI
 
 ```

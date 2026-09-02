@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-09-02
+
+### Changed
+- `install.sh` signs the app with a Developer ID or Apple Development identity when one is
+  available, falling back to ad-hoc. macOS keys privacy grants (Full Disk Access, Desktop /
+  Documents / Downloads) to the code signature, and an ad-hoc signature changes with every rebuild —
+  so the folder permission you granted stopped applying and the next unattended renewal blocked on a
+  dialog with nobody there to click it.
+- README covers granting Full Disk Access for projects kept in folders macOS gates.
+
 ## [1.3.0] — 2026-09-02
 
 ### Fixed

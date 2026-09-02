@@ -74,7 +74,25 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
-codesign --force -s - "$APP"
+# Sign with a real identity when one exists, ad-hoc otherwise.
+#
+# This matters for more than tidiness. macOS keys a privacy grant (Full Disk Access, or access to
+# Desktop/Downloads/Documents) to the app's code signature. An ad-hoc signature is just a hash of
+# the binary, so every rebuild produces a different one and the grant you gave last time no longer
+# applies — the folder prompt comes back, and an unattended renewal blocks on a dialog nobody is
+# there to click. Signing with a stable identity keeps the grant across rebuilds.
+SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+  | awk '/"Developer ID Application:/ {print $2; exit}')"
+[ -n "$SIGN_ID" ] || SIGN_ID="$(security find-identity -v -p codesigning 2>/dev/null \
+  | awk '/"Apple Development:/ {print $2; exit}')"
+
+if [ -n "$SIGN_ID" ] && codesign --force -s "$SIGN_ID" "$APP" 2>/dev/null; then
+  echo "   Signed with a stable identity — privacy permissions survive rebuilds."
+else
+  codesign --force -s - "$APP"
+  echo "   ⚠️  Signed ad-hoc (no signing identity found). macOS will re-ask for folder access"
+  echo "      after each rebuild. Open Xcode once and sign in to get a signing identity."
+fi
 
 # 4. Install to /Applications
 echo "==> Installing to /Applications…"
