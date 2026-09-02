@@ -55,6 +55,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Log.event("AutoRenew launched")
         scheduleCheck(after: 5)
 
+        // `open -a AutoRenew --args --renew-now` forces a full pass at launch. This is the only way
+        // to exercise a renewal *as the app* — running the CLI tests the terminal's file-access
+        // permissions, not the app's, because macOS attributes access to whoever launched the
+        // process. Use it to confirm an unattended renewal can actually read your projects.
+        if CommandLine.arguments.contains("--renew-now") {
+            Log.event("Launched with --renew-now: forcing a renewal pass")
+            scheduleCheck(after: 2, force: true)
+        }
+
         if ProcessInfo.processInfo.environment["AUTORENEW_SMOKE_TEST"] != nil {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { NSApp.terminate(nil) }
         }
@@ -64,9 +73,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         scheduleCheck(after: 0)
     }
 
-    private func scheduleCheck(after delay: TimeInterval) {
+    private func scheduleCheck(after delay: TimeInterval, force: Bool = false) {
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.autoCheck(force: false)
+            self?.autoCheck(force: force)
         }
     }
 

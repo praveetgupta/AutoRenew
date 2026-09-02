@@ -169,5 +169,5 @@ public enum Format {
 }
 
 public enum AutoRenewConstants {
-    public static let version = "1.3.2"
+    public static let version = "1.4.0"
 }

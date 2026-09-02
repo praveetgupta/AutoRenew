@@ -89,6 +89,16 @@ If any of your projects live in `~/Desktop`, `~/Documents`, `~/Downloads`, iClou
 
 The alternative, if you would rather not grant Full Disk Access: keep your projects somewhere macOS does not gate, such as `~/Developer` or `~/Projects`, and no prompt ever appears.
 
+To check the grant actually works, force a pass **as the app**:
+
+```bash
+osascript -e 'quit app "AutoRenew"'
+open -a AutoRenew --args --renew-now
+tail -f ~/Library/Logs/AutoRenew.log
+```
+
+Running `autorenew renew --all` from a terminal does *not* test this — macOS attributes file access to whichever process was launched, so that exercises your terminal's permissions rather than the app's.
+
 ## CLI
 
 ```

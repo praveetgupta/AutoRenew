@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] — 2026-09-02
+
+### Added
+- `open -a AutoRenew --args --renew-now` forces a full renewal pass at launch. This is the only way
+  to exercise a renewal *as the app*: running the CLI tests your terminal's file-access permissions,
+  not the app's, because macOS attributes file access to whichever process was launched. Use it to
+  confirm an unattended renewal can really read projects kept in Desktop, Documents or Downloads.
+
 ## [1.3.2] — 2026-09-02
 
 ### Fixed
