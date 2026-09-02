@@ -36,12 +36,18 @@ public enum Doctor {
         ))
 
         // One listing, reused below — devicectl is slow enough that asking it twice is noticeable.
-        let listing = DeviceWatcher(runner: runner).listing(probeUnreachable: false)
+        // Probing is worth the wait here: a Wi-Fi iPhone usually lists as disconnected or
+        // unavailable, and only the probe says whether a renewal could actually reach it. Reporting
+        // the unprobed state would tell the user their phone is unreachable when it is not.
+        let listing = DeviceWatcher(runner: runner).listing()
         let devices = listing.devices
         let available = devices.filter { $0.isAvailable }
         let deviceSummary = devices.isEmpty
             ? "none seen"
-            : devices.map { "\($0.name): \($0.state) (\($0.displayName))" }.joined(separator: " · ")
+            : devices.map { device in
+                let reached = device.probedReachable ? "\(device.state), reachable when probed" : device.state
+                return "\(device.name): \(reached) (\(device.displayName))"
+            }.joined(separator: " · ")
         checks.append(DoctorCheck(
             name: "devicectl / devices",
             ok: listing.ranSuccessfully,
