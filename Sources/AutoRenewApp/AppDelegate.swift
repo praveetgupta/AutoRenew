@@ -123,7 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func deviceToolTip() -> String {
         guard !devices.isEmpty else { return "No paired devices visible to devicectl" }
-        return devices.map { "\($0.name) — \($0.state) (\($0.displayName))" }.joined(separator: "\n")
+        return devices.map { device in
+            let reach = device.probedReachable ? " · reachable (probed)" : (device.isAvailable ? " · reachable" : "")
+            return "\(device.name) — \(device.listedState)\(reach) (\(device.displayName))"
+        }.joined(separator: "\n")
     }
 
     private func buildItems(into menu: NSMenu) {
@@ -346,7 +349,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
                 var lines = devices.isEmpty
                     ? ["devicectl sees no paired devices."]
-                    : devices.map { "• \($0.name) (\($0.displayName)) — \($0.state)\n    via \($0.connectionLabel), id \($0.identifier)" }
+                    : devices.map { device in
+                        let reach = device.probedReachable
+                            ? "reachable (confirmed by probe)"
+                            : (device.isAvailable ? "reachable" : "not reachable")
+                        return "• \(device.name) (\(device.displayName)) — \(device.listedState), \(reach)\n    via \(device.connectionLabel), id \(device.identifier)"
+                    }
                 if !devices.contains(where: { $0.isAvailable && $0.isIPhone }) {
                     lines.append("")
                     lines.append("To make Wi-Fi renewals work:")

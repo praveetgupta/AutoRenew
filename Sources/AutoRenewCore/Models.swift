@@ -59,6 +59,11 @@ public struct DeviceInfo: Equatable {
     public var hostname: String
     public var identifier: String
     public var state: String
+    /// devicectl's own State column ("connected", "available (paired)", "unavailable"). `state`
+    /// holds the raw tunnelState, which is useful in logs but misleading on screen — an idle phone
+    /// on Wi-Fi reports "disconnected" there while devicectl calls it "available (paired)". Show
+    /// this to people; keep `state` for diagnostics.
+    public var listedState: String
     public var model: String
     public var marketingName: String?
     public var deviceType: String?
@@ -67,12 +72,16 @@ public struct DeviceInfo: Equatable {
     public var probedReachable: Bool
 
     public init(name: String, hostname: String, identifier: String, state: String, model: String,
+                listedState: String? = nil,
                 marketingName: String? = nil, deviceType: String? = nil, transport: String? = nil,
                 developerModeEnabled: Bool? = nil, probedReachable: Bool = false) {
         self.name = name
         self.hostname = hostname
         self.identifier = identifier
         self.state = state
+        // The legacy table already prints devicectl's combined verdict in its State column, so
+        // there is nothing to reconstruct on that path.
+        self.listedState = listedState ?? state
         self.model = model
         self.marketingName = marketingName
         self.deviceType = deviceType
@@ -160,5 +169,5 @@ public enum Format {
 }
 
 public enum AutoRenewConstants {
-    public static let version = "1.2.0"
+    public static let version = "1.3.0"
 }

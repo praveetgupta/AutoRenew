@@ -323,6 +323,114 @@ private struct SilentNotifier: Notifying {
     func notify(title: String, body: String, urgent: Bool) {}
 }
 
+/// Lists one unreachable iPhone and counts how often it is probed.
+private final class ProbeCountingRunner: ProcessRunning {
+    let probeSucceeds: Bool
+    private(set) var probeCount = 0
+
+    init(probeSucceeds: Bool) {
+        self.probeSucceeds = probeSucceeds
+    }
+
+    func run(executable: String, arguments: [String], currentDirectory: String?, timeout: TimeInterval) -> ProcessResult {
+        if arguments.first == "devicectl", arguments.dropFirst().first == "list" {
+            let table = """
+            Name         Hostname                 Identifier                  State          Model
+            Test Phone   test.coredevice.local    00008101-000A11BB0123456E   unavailable    iPhone15,2
+            """
+            return ProcessResult(exitCode: 0, stdout: table, stderr: "")
+        }
+        if arguments.first == "devicectl", arguments.dropFirst().first == "device" {
+            probeCount += 1
+            return ProcessResult(exitCode: probeSucceeds ? 0 : 1, stdout: "", stderr: "")
+        }
+        return ProcessResult(exitCode: 1, stdout: "", stderr: "stub")
+    }
+}
+
+final class ProbeCacheTests: XCTestCase {
+    /// A phone that answered a probe must stay reachable for the rest of the cooldown. Dropping the
+    /// result made a phone on Wi-Fi flip to "unreachable" seconds after a successful renewal.
+    func testSuccessfulProbeSurvivesTheCooldown() {
+        let runner = ProbeCountingRunner(probeSucceeds: true)
+        let watcher = DeviceWatcher(runner: runner)
+
+        XCTAssertEqual(watcher.refresh().first?.isAvailable, true)
+        XCTAssertEqual(runner.probeCount, 1)
+
+        // Second pass is inside the cooldown: no new probe, but the phone is still reachable.
+        XCTAssertEqual(watcher.refresh().first?.isAvailable, true)
+        XCTAssertEqual(runner.probeCount, 1)
+    }
+
+    func testFailedProbeIsAlsoRemembered() {
+        let runner = ProbeCountingRunner(probeSucceeds: false)
+        let watcher = DeviceWatcher(runner: runner)
+
+        XCTAssertEqual(watcher.refresh().first?.isAvailable, false)
+        XCTAssertEqual(watcher.refresh().first?.isAvailable, false)
+        XCTAssertEqual(runner.probeCount, 1, "an unreachable phone must not be re-probed every pass")
+    }
+
+    func testCooldownExpiryAllowsANewProbe() {
+        let runner = ProbeCountingRunner(probeSucceeds: true)
+        let watcher = DeviceWatcher(runner: runner)
+        watcher.probeCooldown = 0
+
+        _ = watcher.refresh()
+        _ = watcher.refresh()
+        XCTAssertEqual(runner.probeCount, 2)
+    }
+}
+
+final class ListedStateTests: XCTestCase {
+    private func listedState(tunnelState: String, transport: String?, pairing: String) -> String? {
+        let transportLine = transport.map { "\"transportType\" : \"\($0)\"," } ?? ""
+        let json = """
+        {
+          "result" : {
+            "devices" : [
+              {
+                "identifier" : "01020304-0506-4781-8901-ABCDEF012345",
+                "connectionProperties" : {
+                  "pairingState" : "\(pairing)",
+                  \(transportLine)
+                  "tunnelState" : "\(tunnelState)"
+                },
+                "deviceProperties" : { "name" : "Test Phone" },
+                "hardwareProperties" : { "deviceType" : "iPhone", "productType" : "iPhone18,1" }
+              }
+            ]
+          }
+        }
+        """
+        return DeviceMonitor.parseDevicesJSON(Data(json.utf8))?.first?.listedState
+    }
+
+    /// An idle phone on Wi-Fi reports tunnelState "disconnected" while devicectl's own table calls
+    /// it "available (paired)". Showing the raw tunnelState made AutoRenew contradict Xcode.
+    func testIdleWiFiPhoneReadsAsAvailable() {
+        XCTAssertEqual(listedState(tunnelState: "disconnected", transport: "localNetwork", pairing: "paired"),
+                       "available (paired)")
+    }
+
+    func testLiveTunnelReadsAsConnected() {
+        XCTAssertEqual(listedState(tunnelState: "connected", transport: "wired", pairing: "paired"), "connected")
+    }
+
+    func testNoTransportReadsAsUnavailable() {
+        XCTAssertEqual(listedState(tunnelState: "unavailable", transport: nil, pairing: "paired"), "unavailable")
+    }
+
+    func testTableRowsKeepTheirOwnStateColumn() {
+        let table = """
+        Name         Hostname                 Identifier                  State          Model
+        Test Phone   test.coredevice.local    00008101-000A11BB0123456E   available      iPhone15,2
+        """
+        XCTAssertEqual(DeviceMonitor.parseDevices(table).first?.listedState, "available")
+    }
+}
+
 final class RenewServiceTests: XCTestCase {
     private static let deviceTable = """
     Name           Hostname                     Identifier                  State        Model

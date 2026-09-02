@@ -45,7 +45,7 @@ public enum Doctor {
         let deviceSummary = devices.isEmpty
             ? "none seen"
             : devices.map { device in
-                let reached = device.probedReachable ? "\(device.state), reachable when probed" : device.state
+                let reached = device.probedReachable ? "\(device.listedState), reachable when probed" : device.listedState
                 return "\(device.name): \(reached) (\(device.displayName))"
             }.joined(separator: " · ")
         checks.append(DoctorCheck(

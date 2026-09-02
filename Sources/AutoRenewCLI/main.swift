@@ -206,7 +206,8 @@ func cmdDevices() {
     }
     for device in devices {
         let mode = device.developerModeEnabled.map { $0 ? " · Developer Mode on" : " · Developer Mode OFF" } ?? ""
-        print("\(device.isAvailable ? "🟢" : "🔴") \(device.name) [\(device.displayName)] state=\(device.state) via=\(device.connectionLabel)\(mode) id=\(device.identifier)")
+        let reach = device.probedReachable ? "reachable (probed)" : (device.isAvailable ? "reachable" : "not reachable")
+        print("\(device.isAvailable ? "🟢" : "🔴") \(device.name) [\(device.displayName)] \(device.listedState) · \(reach) via \(device.connectionLabel)\(mode) id=\(device.identifier)")
     }
 }
 

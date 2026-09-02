@@ -53,19 +53,33 @@ timer, the menu, and the CLI.
 
 ## Device reachability
 
-`devicectl` describes a paired device by `tunnelState`: `connected` for USB and for a live Wi-Fi
-tunnel, `disconnected` once that tunnel has dropped, and `unavailable` for a phone that is paired
-but not answering. A phone on Wi-Fi spends most of its time in the last two, which is why a bare
-`list devices` is not a reliable reachability test.
+The JSON `tunnelState` is not the reachability signal it looks like. It describes the *debugging
+tunnel*: `connected` while one is live, `disconnected` when there is none, `unavailable` when there
+is nothing to tunnel to. An idle iPhone on Wi-Fi that will happily accept an install reports
+`disconnected` — while `devicectl list devices` prints `available (paired)` for that very same
+phone in its State column.
 
-Only the first word of the state carries meaning, and it is compared exactly. Searching for a
-substring instead is a trap: `disconnected` contains `connected`, so a dropped tunnel would read as
-reachable and the pass would build against a destination that is not there.
+Two separate ideas therefore have to be kept apart:
 
-`DeviceWatcher.probe` therefore runs `devicectl device info details --device <id>`, a real
-connection attempt. It succeeds surprisingly often against a phone that had just been reported
-`unavailable`, and as a side effect it wakes the phone's network listener so the subsequent install
-works. `DeviceInfo.probedReachable` records that result and overrides the listed state.
+- **What devicectl says** — `DeviceInfo.listedState`, rebuilt from the JSON to match that State
+  column: `connected` when a tunnel is live, `available (paired)` when the device is paired and has
+  a `transportType`, `unavailable` otherwise. This is what every screen and log line shows, so that
+  AutoRenew never contradicts Xcode about the same phone.
+- **What AutoRenew can act on** — `DeviceInfo.isAvailable`, true only for a live tunnel or a
+  successful probe. Renewals need a connection that actually works, not a listing.
+
+Where the state string is compared, only the first word counts and it is matched exactly.
+Substring matching is a trap: `disconnected` contains `connected`, so a dropped tunnel would read
+as reachable and the pass would build against a destination that is not there.
+
+`DeviceWatcher.probe` runs `devicectl device info details --device <id>`, a real connection attempt.
+It succeeds surprisingly often against a phone just reported unreachable, and as a side effect it
+wakes the phone's network listener so the install that follows works. Results are cached per device
+for `probeCooldown` (5 minutes) — **including successes**. Caching only the attempt time, and
+skipping the device while the cooldown ran, meant a phone that had answered a probe seconds earlier
+was treated as unreachable by the next pass or menu refresh.
+
+`DeviceInfo.probedReachable` records the result and overrides the listed state.
 
 ## State
 

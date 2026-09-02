@@ -74,7 +74,7 @@ public final class RenewService {
             let urgent = Scheduler.urgentApps(registry.apps, settings: registry.settings, now: now)
             let names = urgent.map { $0.name }.joined(separator: ", ")
             if let phone = devices.first(where: { $0.isIPhone }) {
-                progress("iPhone “\(phone.name)” is paired but not reachable right now (state: \(phone.state)). Unlock the iPhone once, make sure it is on the same Wi-Fi as this Mac, or plug it in via USB — AutoRenew retries automatically.")
+                progress("iPhone “\(phone.name)” is paired but did not answer a connection attempt (devicectl lists it as \(phone.listedState)). Unlock the iPhone once, make sure it is on the same Wi-Fi as this Mac, or plug it in via USB — AutoRenew retries automatically.")
                 if !urgent.isEmpty {
                     notifier.notify(title: "AutoRenew — iPhone unreachable",
                                     body: "\(names) will expire soon. “\(phone.name)” is seen but not reachable: unlock the iPhone, check it is on the same Wi-Fi as this Mac, or plug it in via USB.",

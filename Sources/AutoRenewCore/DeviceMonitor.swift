@@ -74,14 +74,29 @@ public enum DeviceMonitor {
             let hostname = d.connectionProperties?.localHostnames?.first
                 ?? d.connectionProperties?.potentialHostnames?.first ?? ""
             let state = (d.connectionProperties?.tunnelState ?? "unknown").lowercased()
+            let paired = d.connectionProperties?.pairingState?.caseInsensitiveCompare("paired") == .orderedSame
+            let transport = d.connectionProperties?.transportType
+            // devicectl's own table prints a combined verdict rather than the raw tunnelState: an
+            // idle but perfectly reachable phone on Wi-Fi shows "available (paired)" there while
+            // tunnelState says "disconnected". Rebuild that verdict so what AutoRenew displays
+            // agrees with what devicectl and Xcode show for the same phone.
+            let listed: String
+            if state == "connected" {
+                listed = "connected"
+            } else if paired, transport != nil {
+                listed = "available (paired)"
+            } else {
+                listed = "unavailable"
+            }
             let device = DeviceInfo(name: name,
                                     hostname: hostname,
                                     identifier: identifier,
                                     state: state,
                                     model: d.hardwareProperties?.productType ?? "",
+                                    listedState: listed,
                                     marketingName: d.hardwareProperties?.marketingName,
                                     deviceType: d.hardwareProperties?.deviceType,
-                                    transport: d.connectionProperties?.transportType,
+                                    transport: transport,
                                     developerModeEnabled: d.deviceProperties?.developerModeStatus.map {
                                         $0.caseInsensitiveCompare("enabled") == .orderedSame
                                     })
@@ -110,7 +125,13 @@ public struct DeviceListing {
 public final class DeviceWatcher {
     let runner: ProcessRunning
     private let probeLock = NSLock()
-    private var lastProbeAttempt: [String: Date] = [:]
+
+    private struct ProbeOutcome {
+        let date: Date
+        let reachable: Bool
+    }
+
+    private var lastProbe: [String: ProbeOutcome] = [:]
 
     /// How long a reachability probe of one device may take.
     public var probeTimeout: TimeInterval = 25
@@ -141,19 +162,25 @@ public final class DeviceWatcher {
         for index in devices.indices where devices[index].needsProbe {
             let identifier = devices[index].identifier
             probeLock.lock()
-            let last = lastProbeAttempt[identifier]
-            probeLock.unlock()
-            if let last, now.timeIntervalSince(last) < probeCooldown { continue }
-            probeLock.lock()
-            lastProbeAttempt[identifier] = now
+            let cached = lastProbe[identifier]
             probeLock.unlock()
 
-            if Self.probe(identifier: identifier, runner: runner, timeout: probeTimeout) {
-                Log.event("Probe: \(devices[index].name) is reachable (list state was “\(devices[index].state)”)")
-                devices[index].probedReachable = true
-            } else {
-                Log.event("Probe: \(devices[index].name) not reachable (list state “\(devices[index].state)”)")
+            // Within the cooldown, reuse the previous answer — crucially including a successful
+            // one. Skipping the device outright here reported a phone that had answered a probe
+            // seconds earlier as unreachable for the rest of the cooldown, which surfaced as an
+            // orange menu-bar icon, a "connect your iPhone" notification and a skipped renewal for
+            // a phone sitting right there on Wi-Fi.
+            if let cached, now.timeIntervalSince(cached.date) < probeCooldown {
+                devices[index].probedReachable = cached.reachable
+                continue
             }
+
+            let reachable = Self.probe(identifier: identifier, runner: runner, timeout: probeTimeout)
+            probeLock.lock()
+            lastProbe[identifier] = ProbeOutcome(date: now, reachable: reachable)
+            probeLock.unlock()
+            devices[index].probedReachable = reachable
+            Log.event("Probe: \(devices[index].name) \(reachable ? "is reachable" : "not reachable") (listed as “\(devices[index].listedState)”)")
         }
         return DeviceListing(devices: devices, toolFailure: listed.toolFailure)
     }

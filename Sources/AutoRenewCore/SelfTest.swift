@@ -184,6 +184,61 @@ public enum SelfTest {
             try? FileManager.default.removeItem(at: dir)
         }
 
+        // MARK: Reachability probing
+
+        do {
+            let table = """
+            Name         Hostname                 Identifier                  State          Model
+            Test Phone   test.coredevice.local    00008101-000A11BB0123456E   unavailable    iPhone15,2
+            """
+            let runner = ProbeCountingRunner(deviceTable: table, probeSucceeds: true)
+            let watcher = DeviceWatcher(runner: runner)
+            check(watcher.refresh().first?.isAvailable == true, "probe makes an unreachable phone usable")
+            check(watcher.refresh().first?.isAvailable == true, "successful probe survives the cooldown")
+            check(runner.probeCount == 1, "phone is not re-probed inside the cooldown")
+
+            let failing = ProbeCountingRunner(deviceTable: table, probeSucceeds: false)
+            let failWatcher = DeviceWatcher(runner: failing)
+            check(failWatcher.refresh().first?.isAvailable == false, "failed probe leaves the phone unreachable")
+            check(failWatcher.refresh().first?.isAvailable == false, "failed probe is remembered too")
+            check(failing.probeCount == 1, "unreachable phone is not re-probed every pass")
+        }
+
+        // MARK: devicectl's own state wording
+
+        do {
+            func listed(tunnel: String, transport: String?, pairing: String = "paired") -> String? {
+                let transportLine = transport.map { #""transportType" : "\#($0)","# } ?? ""
+                let json = """
+                {
+                  "result" : {
+                    "devices" : [
+                      {
+                        "identifier" : "01020304-0506-4781-8901-ABCDEF012345",
+                        "connectionProperties" : {
+                          "pairingState" : "\(pairing)",
+                          \(transportLine)
+                          "tunnelState" : "\(tunnel)"
+                        },
+                        "deviceProperties" : { "name" : "Test Phone" },
+                        "hardwareProperties" : { "deviceType" : "iPhone", "productType" : "iPhone18,1" }
+                      }
+                    ]
+                  }
+                }
+                """
+                return DeviceMonitor.parseDevicesJSON(Data(json.utf8))?.first?.listedState
+            }
+            check(listed(tunnel: "disconnected", transport: "localNetwork") == "available (paired)",
+                  "idle Wi-Fi phone reads as available (paired), not disconnected")
+            check(listed(tunnel: "connected", transport: "wired") == "connected", "live tunnel reads as connected")
+            check(listed(tunnel: "unavailable", transport: nil) == "unavailable", "no transport reads as unavailable")
+            check(DeviceMonitor.parseDevices("""
+            Name         Hostname                 Identifier                  State          Model
+            Test Phone   test.coredevice.local    00008101-000A11BB0123456E   available      iPhone15,2
+            """).first?.listedState == "available", "table rows keep their own State column")
+        }
+
         // MARK: Registry shared between processes
 
         do {
@@ -248,4 +303,27 @@ private struct StubRunner: ProcessRunning {
 
 private struct SilentNotifier: Notifying {
     func notify(title: String, body: String, urgent: Bool) {}
+}
+
+/// Lists a fixed device table and counts how often the reachability probe is run.
+private final class ProbeCountingRunner: ProcessRunning {
+    let deviceTable: String
+    let probeSucceeds: Bool
+    private(set) var probeCount = 0
+
+    init(deviceTable: String, probeSucceeds: Bool) {
+        self.deviceTable = deviceTable
+        self.probeSucceeds = probeSucceeds
+    }
+
+    func run(executable: String, arguments: [String], currentDirectory: String?, timeout: TimeInterval) -> ProcessResult {
+        if arguments.first == "devicectl", arguments.dropFirst().first == "list" {
+            return ProcessResult(exitCode: 0, stdout: deviceTable, stderr: "")
+        }
+        if arguments.first == "devicectl", arguments.dropFirst().first == "device" {
+            probeCount += 1
+            return ProcessResult(exitCode: probeSucceeds ? 0 : 1, stdout: "", stderr: "")
+        }
+        return ProcessResult(exitCode: 1, stdout: "", stderr: "stub")
+    }
 }

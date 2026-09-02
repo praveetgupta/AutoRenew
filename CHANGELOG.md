@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] — 2026-09-02
+
+### Fixed
+- A phone that answered a reachability probe was reported as unreachable for the rest of the
+  five-minute probe cooldown, because the cooldown skipped the device instead of reusing its last
+  answer. On Wi-Fi this showed up as an orange menu-bar icon, a "connect your iPhone" notification
+  and a skipped renewal for a phone that was sitting right there. Probe results — successes and
+  failures — are now remembered for the cooldown.
+
+### Changed
+- Device state is reported the way `devicectl` reports it. The raw `tunnelState` is kept for logs,
+  but an idle phone on Wi-Fi now reads `available (paired)` instead of `disconnected`, which is what
+  `devicectl list devices` and Xcode show for the same phone. `autorenew devices`, `doctor`, the
+  menu-bar tooltip and **Troubleshoot Device…** also say plainly whether a device is reachable and
+  whether that came from a probe.
+
 ## [1.2.0] — 2026-09-02
 
 ### Fixed

@@ -134,7 +134,7 @@ sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 ```
 
 **The iPhone shows as `unavailable` over Wi-Fi**
-This is `devicectl` reporting that the phone is paired but not answering right now. AutoRenew already probes such phones and uses them if the probe succeeds. If it keeps failing:
+This is `devicectl` reporting that the phone is paired but not answering right now. AutoRenew already probes such phones and uses them if the probe succeeds — `autorenew devices` says which, e.g. `available (paired) · reachable (probed)`. If it keeps failing:
 
 1. Unlock the iPhone once — a sleeping phone drops off the network.
 2. Put the Mac and iPhone on the same Wi-Fi (not a guest network, VPN off on both).
