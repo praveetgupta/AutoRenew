@@ -1,0 +1,161 @@
+import Foundation
+
+public struct AppEntry: Codable, Identifiable, Equatable {
+    public var id: String
+    public var name: String
+    public var projectPath: String
+    public var scheme: String
+    public var bundleID: String?
+    public var teamID: String?
+    public var configuration: String
+    public var lastSuccessfulRefresh: Date?
+    public var lastAttempt: Date?
+    public var lastResultMessage: String?
+    public var lastResultOK: Bool
+
+    public init(id: String = UUID().uuidString,
+                name: String,
+                projectPath: String,
+                scheme: String,
+                bundleID: String? = nil,
+                teamID: String? = nil,
+                configuration: String = "Debug",
+                lastSuccessfulRefresh: Date? = nil,
+                lastAttempt: Date? = nil,
+                lastResultMessage: String? = nil,
+                lastResultOK: Bool = false) {
+        self.id = id
+        self.name = name
+        self.projectPath = projectPath
+        self.scheme = scheme
+        self.bundleID = bundleID
+        self.teamID = teamID
+        self.configuration = configuration
+        self.lastSuccessfulRefresh = lastSuccessfulRefresh
+        self.lastAttempt = lastAttempt
+        self.lastResultMessage = lastResultMessage
+        self.lastResultOK = lastResultOK
+    }
+}
+
+public struct Settings: Codable, Equatable {
+    /// Renew when this many days have passed since the last successful install (7-day certs, 2-day buffer).
+    public var renewThresholdDays: Double
+    /// Warn urgently when an app is this close to expiry and no device is reachable.
+    public var urgentDays: Double
+    public var configuration: String
+
+    public init(renewThresholdDays: Double = 5, urgentDays: Double = 6, configuration: String = "Debug") {
+        self.renewThresholdDays = renewThresholdDays
+        self.urgentDays = urgentDays
+        self.configuration = configuration
+    }
+
+    public static let `default` = Settings()
+}
+
+public struct DeviceInfo: Equatable {
+    public var name: String
+    public var hostname: String
+    public var identifier: String
+    public var state: String
+    public var model: String
+    public var marketingName: String?
+    public var deviceType: String?
+    public var transport: String?
+    public var developerModeEnabled: Bool?
+    public var probedReachable: Bool
+
+    public init(name: String, hostname: String, identifier: String, state: String, model: String,
+                marketingName: String? = nil, deviceType: String? = nil, transport: String? = nil,
+                developerModeEnabled: Bool? = nil, probedReachable: Bool = false) {
+        self.name = name
+        self.hostname = hostname
+        self.identifier = identifier
+        self.state = state
+        self.model = model
+        self.marketingName = marketingName
+        self.deviceType = deviceType
+        self.transport = transport
+        self.developerModeEnabled = developerModeEnabled
+        self.probedReachable = probedReachable
+    }
+
+    /// devicectl reports USB devices as "connected", reachable Wi-Fi ones as "available" (sometimes
+    /// suffixed "(wifi)"), and paired-but-unreachable ones as "unavailable". Match on substrings so
+    /// any of those spellings (in any case) work; only "unavailable" means not reachable.
+    public var isAvailable: Bool {
+        if probedReachable { return true }
+        let normalized = state.lowercased()
+        if normalized.contains("unavailable") { return false }
+        return normalized.contains("available") || normalized.contains("connected")
+    }
+
+    public var isIPhone: Bool {
+        if let deviceType = deviceType { return deviceType.caseInsensitiveCompare("iPhone") == .orderedSame }
+        return model.lowercased().contains("iphone")
+    }
+
+    public var isWatch: Bool {
+        if let deviceType = deviceType { return deviceType.lowercased().contains("watch") }
+        return model.lowercased().contains("watch")
+    }
+
+    public var isWired: Bool {
+        if let transport = transport { return transport.caseInsensitiveCompare("wired") == .orderedSame }
+        return state.lowercased().hasPrefix("connected") // legacy table output: USB shows "connected"
+    }
+
+    public var connectionLabel: String { isWired ? "USB" : "Wi-Fi" }
+
+    public var displayName: String { marketingName ?? model }
+
+    /// Only iPhones matter for renewals; probe those that are paired but not currently reachable.
+    public var needsProbe: Bool { !isAvailable && isIPhone }
+}
+
+public enum AppFreshness: Equatable {
+    case unknown   // never renewed by AutoRenew
+    case fresh
+    case dueSoon
+    case expired
+}
+
+public extension AppEntry {
+    func daysRemaining(now: Date = Date(), validityDays: Double = 7) -> Double? {
+        guard let last = lastSuccessfulRefresh else { return nil }
+        return validityDays - now.timeIntervalSince(last) / 86400
+    }
+
+    func freshness(now: Date = Date(), validityDays: Double = 7) -> AppFreshness {
+        guard let remaining = daysRemaining(now: now, validityDays: validityDays) else { return .unknown }
+        if remaining <= 0 { return .expired }
+        if remaining <= 2 { return .dueSoon }
+        return .fresh
+    }
+}
+
+public enum Format {
+    public static func countdown(_ entry: AppEntry, now: Date = Date(), validityDays: Double = 7) -> String {
+        guard let remaining = entry.daysRemaining(now: now, validityDays: validityDays) else { return "never renewed" }
+        if remaining >= 0 {
+            return duration(days: remaining) + " left"
+        } else {
+            return "expired " + duration(days: -remaining) + " ago"
+        }
+    }
+
+    public static func duration(days: Double) -> String {
+        let totalMinutes = Int(days * 24 * 60)
+        let d = totalMinutes / (60 * 24)
+        let h = (totalMinutes % (60 * 24)) / 60
+        let m = totalMinutes % 60
+        if d > 0 { return "\(d)d \(h)h" }
+        if h > 0 { return "\(h)h \(m)m" }
+        return "\(m)m"
+    }
+}
+
+public enum AutoRenewConstants {
+    public static let version = "1.1.0"
+}

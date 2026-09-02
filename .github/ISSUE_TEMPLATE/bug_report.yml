@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in AutoRenew does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: autorenew doctor
+      description: Output of `autorenew doctor`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: The relevant lines from `~/Library/Logs/AutoRenew.log`. Redact identifiers you would rather not share.
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: macOS and Xcode versions
+      placeholder: "macOS 15.6, Xcode 16.4"
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: How was the iPhone connected?
+      options: [USB, Wi-Fi, Not connected]
+    validations:
+      required: true

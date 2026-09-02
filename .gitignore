@@ -1,0 +1,23 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Build output produced by install.sh
+dist/
+
+# Xcode
+*.xcuserdatad/
+xcuserdata/
+DerivedData/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors
+*.swp
+*~

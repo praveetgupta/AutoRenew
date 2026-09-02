@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AutoRenew}",
+            "name": "Debug AutoRenew",
+            "target": "AutoRenew",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug AutoRenew"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AutoRenew}",
+            "name": "Release AutoRenew",
+            "target": "AutoRenew",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release AutoRenew"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AutoRenew}",
+            "name": "Debug autorenew-cli",
+            "target": "autorenew-cli",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug autorenew-cli"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:AutoRenew}",
+            "name": "Release autorenew-cli",
+            "target": "autorenew-cli",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release autorenew-cli"
+        }
+    ]
+}
