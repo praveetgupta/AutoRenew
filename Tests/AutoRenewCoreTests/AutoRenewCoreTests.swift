@@ -349,37 +349,46 @@ private final class ProbeCountingRunner: ProcessRunning {
 }
 
 final class ProbeCacheTests: XCTestCase {
+    /// Keep invented device names out of the user's real diagnostic log.
+    private func quietly(_ body: () -> Void) { Log.quiet(body) }
+
     /// A phone that answered a probe must stay reachable for the rest of the cooldown. Dropping the
     /// result made a phone on Wi-Fi flip to "unreachable" seconds after a successful renewal.
     func testSuccessfulProbeSurvivesTheCooldown() {
-        let runner = ProbeCountingRunner(probeSucceeds: true)
-        let watcher = DeviceWatcher(runner: runner)
+        quietly {
+            let runner = ProbeCountingRunner(probeSucceeds: true)
+            let watcher = DeviceWatcher(runner: runner)
 
-        XCTAssertEqual(watcher.refresh().first?.isAvailable, true)
-        XCTAssertEqual(runner.probeCount, 1)
+            XCTAssertEqual(watcher.refresh().first?.isAvailable, true)
+            XCTAssertEqual(runner.probeCount, 1)
 
-        // Second pass is inside the cooldown: no new probe, but the phone is still reachable.
-        XCTAssertEqual(watcher.refresh().first?.isAvailable, true)
-        XCTAssertEqual(runner.probeCount, 1)
+            // Second pass is inside the cooldown: no new probe, but the phone is still reachable.
+            XCTAssertEqual(watcher.refresh().first?.isAvailable, true)
+            XCTAssertEqual(runner.probeCount, 1)
+        }
     }
 
     func testFailedProbeIsAlsoRemembered() {
-        let runner = ProbeCountingRunner(probeSucceeds: false)
-        let watcher = DeviceWatcher(runner: runner)
+        quietly {
+            let runner = ProbeCountingRunner(probeSucceeds: false)
+            let watcher = DeviceWatcher(runner: runner)
 
-        XCTAssertEqual(watcher.refresh().first?.isAvailable, false)
-        XCTAssertEqual(watcher.refresh().first?.isAvailable, false)
-        XCTAssertEqual(runner.probeCount, 1, "an unreachable phone must not be re-probed every pass")
+            XCTAssertEqual(watcher.refresh().first?.isAvailable, false)
+            XCTAssertEqual(watcher.refresh().first?.isAvailable, false)
+            XCTAssertEqual(runner.probeCount, 1, "an unreachable phone must not be re-probed every pass")
+        }
     }
 
     func testCooldownExpiryAllowsANewProbe() {
-        let runner = ProbeCountingRunner(probeSucceeds: true)
-        let watcher = DeviceWatcher(runner: runner)
-        watcher.probeCooldown = 0
+        quietly {
+            let runner = ProbeCountingRunner(probeSucceeds: true)
+            let watcher = DeviceWatcher(runner: runner)
+            watcher.probeCooldown = 0
 
-        _ = watcher.refresh()
-        _ = watcher.refresh()
-        XCTAssertEqual(runner.probeCount, 2)
+            _ = watcher.refresh()
+            _ = watcher.refresh()
+            XCTAssertEqual(runner.probeCount, 2)
+        }
     }
 }
 

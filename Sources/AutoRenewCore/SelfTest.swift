@@ -4,6 +4,11 @@ import Foundation
 /// Run via: autorenew selftest
 public enum SelfTest {
     public static func run() -> Int {
+        // Fake devices and registries must not leave traces in the real diagnostic log.
+        Log.quiet { runChecks() }
+    }
+
+    private static func runChecks() -> Int {
         var failures = 0
         func check(_ condition: Bool, _ name: String) {
             if condition {

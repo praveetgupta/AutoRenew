@@ -4,6 +4,13 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] — 2026-09-02
+
+### Fixed
+- `autorenew selftest` and the XCTest suite wrote their invented device names into the real
+  `~/Library/Logs/AutoRenew.log`, where they would mislead anyone reading it after a genuine
+  failure. Logging is suppressed for the duration of a test run.
+
 ## [1.3.1] — 2026-09-02
 
 ### Changed
