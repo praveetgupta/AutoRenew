@@ -260,6 +260,103 @@ final class RegistryTests: XCTestCase {
         registry.remove(id: app.id)
         XCTAssertTrue(Registry(directory: dir).apps.isEmpty)
     }
+
+    /// The menu-bar app and the CLI are separate long-lived readers of the same file.
+    func testTwoInstancesShareTheFile() throws {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AutoRenewRegistry-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let app = Registry(directory: dir)
+        let cli = Registry(directory: dir)
+        XCTAssertTrue(app.apps.isEmpty)
+
+        cli.add(AppEntry(name: "AddedByCLI", projectPath: "/tmp/AddedByCLI.xcodeproj", scheme: "AddedByCLI"))
+        XCTAssertEqual(app.apps.map { $0.name }, ["AddedByCLI"])
+
+        app.add(AppEntry(name: "AddedByApp", projectPath: "/tmp/AddedByApp.xcodeproj", scheme: "AddedByApp"))
+        XCTAssertEqual(Set(Registry(directory: dir).apps.map { $0.name }), ["AddedByCLI", "AddedByApp"])
+
+        cli.updateSettings { $0.renewThresholdDays = 4 }
+        XCTAssertEqual(app.settings.renewThresholdDays, 4)
+    }
+}
+
+final class DeviceStateTests: XCTestCase {
+    private func device(_ state: String, probed: Bool = false) -> DeviceInfo {
+        DeviceInfo(name: "Phone", hostname: "h", identifier: "id", state: state, model: "iPhone18,1",
+                   probedReachable: probed)
+    }
+
+    func testReachableStates() {
+        XCTAssertTrue(device("available").isAvailable)
+        XCTAssertTrue(device("available (wifi)").isAvailable)
+        XCTAssertTrue(device("connected").isAvailable)
+        XCTAssertTrue(device("Connected").isAvailable)
+    }
+
+    func testUnreachableStates() {
+        XCTAssertFalse(device("unavailable").isAvailable)
+        // "disconnected" contains "connected"; a substring test would call this reachable.
+        XCTAssertFalse(device("disconnected").isAvailable)
+        XCTAssertFalse(device("connecting").isAvailable)
+        XCTAssertFalse(device("unknown").isAvailable)
+    }
+
+    func testProbeOverridesListedState() {
+        XCTAssertTrue(device("unavailable", probed: true).isAvailable)
+        XCTAssertTrue(device("disconnected", probed: true).isAvailable)
+    }
+}
+
+/// Answers `devicectl list devices` from a fixed table and refuses everything else.
+private struct StubRunner: ProcessRunning {
+    let deviceTable: String
+
+    func run(executable: String, arguments: [String], currentDirectory: String?, timeout: TimeInterval) -> ProcessResult {
+        if arguments.first == "devicectl", arguments.dropFirst().first == "list" {
+            return ProcessResult(exitCode: 0, stdout: deviceTable, stderr: "")
+        }
+        return ProcessResult(exitCode: 1, stdout: "", stderr: "stub")
+    }
+}
+
+private struct SilentNotifier: Notifying {
+    func notify(title: String, body: String, urgent: Bool) {}
+}
+
+final class RenewServiceTests: XCTestCase {
+    private static let deviceTable = """
+    Name           Hostname                     Identifier                  State        Model
+    Test Phone     test.coredevice.local        00008101-000A11BB0123456E   available    iPhone15,2
+    """
+
+    private func registryWithFreshApp() throws -> Registry {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AutoRenewService-\(UUID().uuidString)")
+        let registry = Registry(directory: dir)
+        var entry = AppEntry(name: "Fresh", projectPath: "/tmp/Fresh.xcodeproj", scheme: "Fresh")
+        entry.lastSuccessfulRefresh = Date()
+        registry.add(entry)
+        return registry
+    }
+
+    func testNoDeviceIsReportedSeparatelyFromNothingDue() throws {
+        let registry = try registryWithFreshApp()
+        let service = RenewService(registry: registry, runner: StubRunner(deviceTable: ""), notifier: SilentNotifier())
+        XCTAssertEqual(service.run().result, .noDeviceAvailable)
+    }
+
+    func testNothingDueWhenAppsAreFresh() throws {
+        let registry = try registryWithFreshApp()
+        let service = RenewService(registry: registry, runner: StubRunner(deviceTable: Self.deviceTable), notifier: SilentNotifier())
+        XCTAssertEqual(service.run().result, .nothingDue)
+    }
+
+    func testUnknownAppIDDoesNotRenewEverything() throws {
+        let registry = try registryWithFreshApp()
+        let service = RenewService(registry: registry, runner: StubRunner(deviceTable: Self.deviceTable), notifier: SilentNotifier())
+        let pass = service.run(force: true, only: "not-a-real-id")
+        XCTAssertEqual(pass.result, .nothingDue)
+        XCTAssertTrue(pass.records.isEmpty)
+    }
 }
 
 final class ProjectLocatorTests: XCTestCase {

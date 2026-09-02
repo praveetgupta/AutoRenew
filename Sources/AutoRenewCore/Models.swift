@@ -81,14 +81,17 @@ public struct DeviceInfo: Equatable {
         self.probedReachable = probedReachable
     }
 
-    /// devicectl reports USB devices as "connected", reachable Wi-Fi ones as "available" (sometimes
-    /// suffixed "(wifi)"), and paired-but-unreachable ones as "unavailable". Match on substrings so
-    /// any of those spellings (in any case) work; only "unavailable" means not reachable.
+    /// devicectl spells the state differently depending on where it comes from: the JSON
+    /// `tunnelState` is one of connected / disconnected / unavailable / connecting, while the legacy
+    /// table prints "connected" for USB, "available" (sometimes "available (wifi)") for a reachable
+    /// Wi-Fi device, and "unavailable" for a paired one that is not answering.
+    ///
+    /// Only the first word carries the meaning, so compare that rather than searching for a
+    /// substring — "disconnected" contains "connected" and would otherwise read as reachable.
     public var isAvailable: Bool {
         if probedReachable { return true }
-        let normalized = state.lowercased()
-        if normalized.contains("unavailable") { return false }
-        return normalized.contains("available") || normalized.contains("connected")
+        let word = state.lowercased().split(separator: " ").first.map(String.init) ?? ""
+        return word == "available" || word == "connected"
     }
 
     public var isIPhone: Bool {
@@ -157,5 +160,5 @@ public enum Format {
 }
 
 public enum AutoRenewConstants {
-    public static let version = "1.1.0"
+    public static let version = "1.2.0"
 }

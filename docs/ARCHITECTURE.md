@@ -54,8 +54,13 @@ timer, the menu, and the CLI.
 ## Device reachability
 
 `devicectl` describes a paired device by `tunnelState`: `connected` for USB and for a live Wi-Fi
-tunnel, `unavailable` for a phone that is paired but not answering. A phone on Wi-Fi spends most of
-its time in `unavailable`, which is why a bare `list devices` is not a reliable reachability test.
+tunnel, `disconnected` once that tunnel has dropped, and `unavailable` for a phone that is paired
+but not answering. A phone on Wi-Fi spends most of its time in the last two, which is why a bare
+`list devices` is not a reliable reachability test.
+
+Only the first word of the state carries meaning, and it is compared exactly. Searching for a
+substring instead is a trap: `disconnected` contains `connected`, so a dropped tunnel would read as
+reachable and the pass would build against a destination that is not there.
 
 `DeviceWatcher.probe` therefore runs `devicectl device info details --device <id>`, a real
 connection attempt. It succeeds surprisingly often against a phone that had just been reported
@@ -64,8 +69,11 @@ works. `DeviceInfo.probedReachable` records that result and overrides the listed
 
 ## State
 
-One file, `apps.json`, holds the app list and settings. It is written atomically under an
-`NSLock`. Both the menu-bar app and the CLI open their own `Registry` instance.
-Each instance loads the file at startup and keeps it in memory, so the running menu-bar app does not
-pick up a `autorenew add` from the CLI until it is relaunched. Quit and reopen AutoRenew after
-changing the registry from the command line.
+One file, `apps.json`, holds the app list and settings. It is written atomically under an `NSLock`.
+
+The menu-bar app and the CLI are separate processes holding their own `Registry` instance, and the
+app runs for weeks at a time. Every read and every write therefore compares the file's modification
+date against what is held in memory and re-reads when they differ, so `autorenew add` from a
+terminal shows up in the running app's menu, and the app's next save cannot overwrite it. Within a
+process the read-modify-write is serialized by the lock; across processes the remaining window is
+sub-millisecond and both writers are user-driven.

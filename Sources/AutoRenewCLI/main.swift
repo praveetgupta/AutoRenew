@@ -30,17 +30,29 @@ func usage() -> String {
       selftest               Run built-in logic tests
       version                Print version
       help                   Show this help
+
+    EXIT CODES (renew)
+      0  renewed, or nothing was due
+      1  at least one renewal failed
+      2  no reachable iPhone — nothing was attempted
     """
 }
 
 func findApp(matching query: String) -> AppEntry {
-    let matches = registry.apps.filter {
-        $0.name.caseInsensitiveCompare(query) == .orderedSame || $0.name.lowercased().contains(query.lowercased())
+    let apps = registry.apps
+    if let exact = apps.first(where: { $0.name.caseInsensitiveCompare(query) == .orderedSame }) {
+        return exact
     }
-    guard let entry = matches.first else {
-        fatal("No registered app matching '\(query)'. Registered: \(registry.apps.map { $0.name }.joined(separator: ", "))")
+    let partial = apps.filter { $0.name.lowercased().contains(query.lowercased()) }
+    switch partial.count {
+    case 0:
+        fatal("No registered app matching '\(query)'. Registered: \(apps.map { $0.name }.joined(separator: ", "))")
+    case 1:
+        return partial[0]
+    default:
+        // Acting on an arbitrary one of several matches is worse than refusing.
+        fatal("'\(query)' matches several apps: \(partial.map { $0.name }.joined(separator: ", ")). Use the full name.")
     }
-    return entry
 }
 
 func cmdAdd(_ rest: [String]) {
@@ -168,15 +180,21 @@ func cmdRenew(_ rest: [String]) {
 
     print("Looking for iPhone…")
     let service = RenewService(registry: registry, notifier: LogNotifier())
-    let records = service.run(force: force, only: onlyID, progress: { print($0) })
+    let pass = service.run(force: force, only: onlyID, progress: { print($0) })
 
-    guard !records.isEmpty else { return }
-    var failures = 0
-    for record in records {
+    for record in pass.records {
         print((record.success ? "✅ " : "❌ ") + record.appName + " — " + record.message)
-        if !record.success { failures += 1 }
     }
-    exit(failures > 0 ? 1 : 0)
+
+    switch pass.result {
+    case .noDeviceAvailable:
+        // Distinct from "nothing to do" so a cron job or script can tell the difference.
+        exit(2)
+    case .nothingDue:
+        exit(0)
+    case .attempted:
+        exit(pass.failures.isEmpty ? 0 : 1)
+    }
 }
 
 func cmdDevices() {
@@ -197,8 +215,12 @@ func cmdThreshold(_ rest: [String]) {
         print("Usage: autorenew threshold <1-7>   (default 5 — renews when 5 of the 7 days are used)")
         exit(1)
     }
-    registry.updateSettings { $0.renewThresholdDays = days }
-    print("✅ Renew threshold set to \(days) day\(days == 1 ? "" : "s").")
+    registry.updateSettings {
+        $0.renewThresholdDays = days
+        // The urgent "plug your phone in" warning is pointless before the renewal itself is due.
+        $0.urgentDays = max($0.urgentDays, days)
+    }
+    print("✅ Renew threshold set to \(days) day\(days == 1 ? "" : "s") of the 7.")
 }
 
 func cmdDoctor() {

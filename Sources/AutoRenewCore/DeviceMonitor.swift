@@ -93,6 +93,20 @@ public enum DeviceMonitor {
     }
 }
 
+/// The result of one `devicectl list devices` call. `toolFailure` separates "devicectl could not
+/// run" from "devicectl ran and saw nothing", which Doctor needs to report a useful message.
+public struct DeviceListing {
+    public let devices: [DeviceInfo]
+    public let toolFailure: String?
+
+    public init(devices: [DeviceInfo], toolFailure: String? = nil) {
+        self.devices = devices
+        self.toolFailure = toolFailure
+    }
+
+    public var ranSuccessfully: Bool { toolFailure == nil }
+}
+
 public final class DeviceWatcher {
     let runner: ProcessRunning
     private let probeLock = NSLock()
@@ -114,8 +128,14 @@ public final class DeviceWatcher {
     /// a working Wi-Fi renewal.
     @discardableResult
     public func refresh(probeUnreachable: Bool = true) -> [DeviceInfo] {
-        var devices = listDevices()
-        guard probeUnreachable else { return devices }
+        listing(probeUnreachable: probeUnreachable).devices
+    }
+
+    /// As `refresh`, but also reports whether `devicectl` itself ran.
+    public func listing(probeUnreachable: Bool = true) -> DeviceListing {
+        let listed = listDevices()
+        var devices = listed.devices
+        guard probeUnreachable else { return listed }
 
         let now = Date()
         for index in devices.indices where devices[index].needsProbe {
@@ -135,10 +155,10 @@ public final class DeviceWatcher {
                 Log.event("Probe: \(devices[index].name) not reachable (list state “\(devices[index].state)”)")
             }
         }
-        return devices
+        return DeviceListing(devices: devices, toolFailure: listed.toolFailure)
     }
 
-    private func listDevices() -> [DeviceInfo] {
+    private func listDevices() -> DeviceListing {
         let jsonFile = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("autorenew-devices-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: jsonFile) }
@@ -148,13 +168,14 @@ public final class DeviceWatcher {
                                 timeout: 90)
         if result.exitCode == 0, let data = try? Data(contentsOf: jsonFile),
            let parsed = DeviceMonitor.parseDevicesJSON(data) {
-            return parsed
+            return DeviceListing(devices: parsed)
         }
         guard result.exitCode == 0 else {
-            Log.event("devicectl failed (\(result.exitCode)): \(result.stderr.trimmingCharacters(in: .whitespacesAndNewlines).prefix(300))")
-            return []
+            let detail = result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            Log.event("devicectl failed (\(result.exitCode)): \(detail.prefix(300))")
+            return DeviceListing(devices: [], toolFailure: detail.isEmpty ? "exit \(result.exitCode)" : detail)
         }
-        return DeviceMonitor.parseDevices(result.stdout)
+        return DeviceListing(devices: DeviceMonitor.parseDevices(result.stdout))
     }
 
     /// A real connection attempt. `devicectl device info details` forces CoreDevice to (re)connect

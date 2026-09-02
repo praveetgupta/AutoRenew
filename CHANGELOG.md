@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-09-02
+
+### Fixed
+- A device whose `tunnelState` was `disconnected` was treated as reachable, because the check looked
+  for `connected` as a substring. The state's first word is now compared exactly, so such a phone is
+  probed like any other unreachable one instead of being built against blindly.
+- The menu-bar app and the CLI no longer overwrite each other's registry. Both re-read `apps.json`
+  when it changes on disk, so an `autorenew add` from a terminal appears in the running app and
+  survives the app's next save.
+- `autorenew renew` no longer widens a single-app request into "renew everything" when the given app
+  id is no longer registered.
+- `autorenew remove`/`renew --app` refuse an ambiguous name instead of acting on whichever match
+  came first.
+- Lowering the renew threshold no longer leaves the urgent "plug your phone in" warning firing
+  before the renewal it is warning about.
+
+### Changed
+- `autorenew renew` exit codes: `0` renewed or nothing due, `1` a renewal failed, `2` no reachable
+  iPhone.
+- When several iPhones are reachable, a wired one is preferred and the choice is stable between
+  passes rather than depending on the order `devicectl` happened to list them.
+- `install.sh` copies the `autorenew` binary into `bin` instead of symlinking into `.build/`, so
+  moving or cleaning the clone no longer breaks the command, and it reads the bundle version from
+  `AutoRenewConstants.version` instead of repeating it.
+- `autorenew doctor` lists devices once rather than twice.
+
 ## [1.1.0] — 2026-09-02
 
 ### Added

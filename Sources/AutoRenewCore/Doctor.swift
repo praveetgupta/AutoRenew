@@ -35,18 +35,19 @@ public enum Doctor {
             detail: xb.exitCode == 0 ? xbVersion : "unavailable — install full Xcode from the App Store"
         ))
 
-        let dc = runner.run(executable: "/usr/bin/xcrun", arguments: ["devicectl", "list", "devices"], timeout: 90)
-        let devices = DeviceWatcher(runner: runner).refresh(probeUnreachable: false)
+        // One listing, reused below — devicectl is slow enough that asking it twice is noticeable.
+        let listing = DeviceWatcher(runner: runner).listing(probeUnreachable: false)
+        let devices = listing.devices
         let available = devices.filter { $0.isAvailable }
         let deviceSummary = devices.isEmpty
             ? "none seen"
             : devices.map { "\($0.name): \($0.state) (\($0.displayName))" }.joined(separator: " · ")
         checks.append(DoctorCheck(
             name: "devicectl / devices",
-            ok: dc.exitCode == 0,
-            detail: dc.exitCode == 0
+            ok: listing.ranSuccessfully,
+            detail: listing.ranSuccessfully
                 ? "\(devices.count) device(s) seen, \(available.count) available — \(deviceSummary)"
-                : "unavailable: \(dc.stderr.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))"
+                : "unavailable: \((listing.toolFailure ?? "unknown error").prefix(200))"
         ))
 
         if let phone = devices.first(where: { $0.isIPhone }) {

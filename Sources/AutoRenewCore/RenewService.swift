@@ -12,6 +12,30 @@ public struct RenewRecord {
     }
 }
 
+/// What one pass actually did. The caller needs to tell "nothing needed doing" apart from
+/// "there was no phone to install onto" — they look identical if you only return the records.
+public struct RenewPass {
+    public enum Result: Equatable {
+        /// No reachable device, so nothing could be attempted.
+        case noDeviceAvailable
+        /// A device was there; no registered app was due.
+        case nothingDue
+        /// At least one app was attempted; see `records` for how each one went.
+        case attempted
+    }
+
+    public let result: Result
+    public let records: [RenewRecord]
+
+    public init(result: Result, records: [RenewRecord] = []) {
+        self.result = result
+        self.records = records
+    }
+
+    public var failures: [RenewRecord] { records.filter { !$0.success } }
+    public var successes: [RenewRecord] { records.filter { $0.success } }
+}
+
 /// One renewal pass: find the iPhone, renew every due app, update the registry, notify.
 public final class RenewService {
     let registry: Registry
@@ -28,7 +52,7 @@ public final class RenewService {
     public func run(force: Bool = false,
                     only entryID: String? = nil,
                     preFetchedDevices: [DeviceInfo]? = nil,
-                    progress: @escaping (String) -> Void = { _ in }) -> [RenewRecord] {
+                    progress: @escaping (String) -> Void = { _ in }) -> RenewPass {
         let now = Date()
 
         let devices: [DeviceInfo]
@@ -39,8 +63,13 @@ public final class RenewService {
         }
 
         let available = devices.filter { $0.isAvailable }
-        let iPhones = available.filter { $0.isIPhone }
-        let others = available.filter { !$0.isIPhone && !$0.isWatch } // iPad etc. — never a watch
+        // Prefer a wired phone (faster and it cannot drop mid-install), then order by name so the
+        // same phone is chosen every pass when several are paired.
+        let byPreference: (DeviceInfo, DeviceInfo) -> Bool = { lhs, rhs in
+            lhs.isWired == rhs.isWired ? lhs.name < rhs.name : lhs.isWired
+        }
+        let iPhones = available.filter { $0.isIPhone }.sorted(by: byPreference)
+        let others = available.filter { !$0.isIPhone && !$0.isWatch }.sorted(by: byPreference) // iPad etc. — never a watch
         guard let device = iPhones.first ?? others.first else {
             let urgent = Scheduler.urgentApps(registry.apps, settings: registry.settings, now: now)
             let names = urgent.map { $0.name }.joined(separator: ", ")
@@ -59,11 +88,17 @@ public final class RenewService {
                                     urgent: true)
                 }
             }
-            return []
+            return RenewPass(result: .noDeviceAvailable)
         }
 
         let targets: [AppEntry]
-        if let entryID = entryID, let entry = registry.apps.first(where: { $0.id == entryID }) {
+        if let entryID = entryID {
+            // Never widen the request: an id that no longer resolves (removed from the registry in
+            // another process) must not turn into "renew everything".
+            guard let entry = registry.apps.first(where: { $0.id == entryID }) else {
+                progress("That app is no longer registered — nothing to renew.")
+                return RenewPass(result: .nothingDue)
+            }
             targets = [entry]
         } else if force {
             targets = registry.apps
@@ -73,7 +108,7 @@ public final class RenewService {
 
         guard !targets.isEmpty else {
             progress("Nothing due — all apps are fresh.")
-            return []
+            return RenewPass(result: .nothingDue)
         }
 
         let engine = RenewEngine(runner: runner)
@@ -102,8 +137,9 @@ public final class RenewService {
             records.append(RenewRecord(appName: entry.name, success: outcome.success, message: outcome.message))
         }
 
-        let ok = records.filter { $0.success }
-        let failed = records.filter { !$0.success }
+        let pass = RenewPass(result: .attempted, records: records)
+        let ok = pass.successes
+        let failed = pass.failures
         if !ok.isEmpty {
             notifier.notify(title: "AutoRenew — refreshed \(ok.count) app\(ok.count == 1 ? "" : "s")",
                             body: ok.map { $0.appName }.joined(separator: ", "),
@@ -115,6 +151,6 @@ public final class RenewService {
                             body: String(body.prefix(400)),
                             urgent: true)
         }
-        return records
+        return pass
     }
 }

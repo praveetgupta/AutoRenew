@@ -72,7 +72,11 @@ public enum SelfTest {
         check(isAvail("available (wifi)"), "state available (wifi) → reachable")
         check(isAvail("connected"), "state connected → reachable")
         check(!isAvail("unavailable"), "state unavailable → not reachable")
+        check(!isAvail("disconnected"), "state disconnected → not reachable")
+        check(!isAvail("connecting"), "state connecting → not reachable")
+        check(!isAvail("unknown"), "state unknown → not reachable")
         check(isAvail("unavailable", probed: true), "successful probe overrides unavailable")
+        check(isAvail("disconnected", probed: true), "successful probe overrides disconnected")
 
         let watch = DeviceInfo(name: "Watch", hostname: "h", identifier: "3", state: "unavailable",
                                model: "Watch6,11", deviceType: "appleWatch")
@@ -180,6 +184,68 @@ public enum SelfTest {
             try? FileManager.default.removeItem(at: dir)
         }
 
+        // MARK: Registry shared between processes
+
+        do {
+            let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AutoRenewSelfTest-\(UUID().uuidString)")
+            let app = Registry(directory: dir)      // stands in for the long-running menu-bar app
+            let cli = Registry(directory: dir)      // stands in for `autorenew add`
+            _ = app.apps                            // the app has read the (empty) registry once
+
+            cli.add(AppEntry(name: "AddedByCLI", projectPath: "/tmp/AddedByCLI.xcodeproj", scheme: "AddedByCLI"))
+            check(app.apps.map { $0.name } == ["AddedByCLI"], "registry picks up another process's addition")
+
+            app.add(AppEntry(name: "AddedByApp", projectPath: "/tmp/AddedByApp.xcodeproj", scheme: "AddedByApp"))
+            check(Registry(directory: dir).apps.count == 2, "writing does not clobber the other process's app")
+
+            cli.updateSettings { $0.renewThresholdDays = 4 }
+            check(app.settings.renewThresholdDays == 4, "registry picks up another process's settings change")
+
+            try? FileManager.default.removeItem(at: dir)
+        }
+
+        // MARK: Renewal pass outcomes
+
+        do {
+            let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("AutoRenewSelfTest-\(UUID().uuidString)")
+            let registry = Registry(directory: dir)
+            var fresh = AppEntry(name: "Fresh", projectPath: "/tmp/Fresh.xcodeproj", scheme: "Fresh")
+            fresh.lastSuccessfulRefresh = Date()
+            registry.add(fresh)
+
+            let noDevices = RenewService(registry: registry, runner: StubRunner(deviceTable: ""), notifier: SilentNotifier())
+            check(noDevices.run().result == .noDeviceAvailable, "no reachable device → noDeviceAvailable")
+
+            let table = """
+            Name           Hostname                     Identifier                  State        Model
+            Test Phone     test.coredevice.local        00008101-000A11BB0123456E   available    iPhone15,2
+            """
+            let withDevice = RenewService(registry: registry, runner: StubRunner(deviceTable: table), notifier: SilentNotifier())
+            check(withDevice.run().result == .nothingDue, "device present but nothing due → nothingDue")
+            check(withDevice.run(force: true, only: "not-a-real-id").result == .nothingDue,
+                  "unknown app id never widens into renewing everything")
+
+            try? FileManager.default.removeItem(at: dir)
+        }
+
         return failures
     }
+}
+
+/// Answers `devicectl list devices` from a fixed table and refuses everything else, so a renewal
+/// pass can be driven without Xcode or a phone.
+private struct StubRunner: ProcessRunning {
+    let deviceTable: String
+
+    func run(executable: String, arguments: [String], currentDirectory: String?, timeout: TimeInterval) -> ProcessResult {
+        if arguments.first == "devicectl", arguments.dropFirst().first == "list" {
+            // No --json-output file is written, so DeviceWatcher falls back to parsing this table.
+            return ProcessResult(exitCode: 0, stdout: deviceTable, stderr: "")
+        }
+        return ProcessResult(exitCode: 1, stdout: "", stderr: "stub: \(executable) \(arguments.joined(separator: " "))")
+    }
+}
+
+private struct SilentNotifier: Notifying {
+    func notify(title: String, body: String, urgent: Bool) {}
 }

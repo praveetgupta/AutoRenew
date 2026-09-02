@@ -57,9 +57,7 @@ cd AutoRenew
 ./install.sh
 ```
 
-`install.sh` builds both binaries in release mode, renders the app icon, assembles `AutoRenew.app`, copies it to `/Applications`, symlinks the `autorenew` CLI into `/opt/homebrew/bin` (or `/usr/local/bin`), launches the app and runs `autorenew doctor`.
-
-> **Keep the clone where it is.** The `autorenew` command is a symlink into this repo's `.build/release/` directory, so moving or `swift package clean`-ing the checkout breaks the CLI until you re-run `./install.sh`.
+`install.sh` builds both binaries in release mode, renders the app icon, assembles `AutoRenew.app`, copies it to `/Applications`, installs the `autorenew` CLI into `/opt/homebrew/bin` (or `/usr/local/bin`), launches the app and runs `autorenew doctor`. Re-run it after pulling changes — the installed copies are copies, not symlinks, so the clone can be moved or cleaned without breaking the command.
 
 The app is signed ad-hoc (`codesign -s -`) because it is built on your own machine. There are no notarized downloads — building from source is the intended path.
 
@@ -94,6 +92,9 @@ autorenew doctor                      # check Xcode, devices, signing identity, 
 autorenew selftest                    # built-in logic tests, no Xcode needed
 autorenew version
 ```
+
+`renew` exits **0** when it renewed or had nothing to do, **1** when a renewal failed, and **2** when
+no iPhone was reachable — so a script or cron job can tell "all good" from "go plug your phone in".
 
 Example:
 

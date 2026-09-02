@@ -16,7 +16,13 @@ if ! xcrun xcodebuild -version >/dev/null 2>&1; then
 fi
 
 # 2. Build release binaries
-echo "==> Building (release)…"
+# Single source of truth for the version — the bundle must not drift from what the binaries report.
+VERSION="$(sed -n 's/.*static let version = "\(.*\)".*/\1/p' Sources/AutoRenewCore/Models.swift)"
+if [ -z "$VERSION" ]; then
+  echo "❌ Could not read the version from Sources/AutoRenewCore/Models.swift"
+  exit 1
+fi
+echo "==> Building AutoRenew $VERSION (release)…"
 swift build -c release --product AutoRenew
 swift build -c release --product autorenew-cli
 
@@ -47,7 +53,8 @@ cp "$ICON_DIR/AppIcon1024.png" "$ICONSET/icon_512x512@2x.png"
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 cp "$ICON_DIR/MenuBar.png" "$APP/Contents/Resources/MenuBar.png"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+# Unquoted heredoc so $VERSION expands; the plist itself contains no other shell metacharacters.
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -55,15 +62,15 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key><string>AutoRenew</string>
     <key>CFBundleDisplayName</key><string>AutoRenew</string>
     <key>CFBundleIdentifier</key><string>com.autorenew.local</string>
-    <key>CFBundleVersion</key><string>1.1.0</string>
-    <key>CFBundleShortVersionString</key><string>1.1.0</string>
+    <key>CFBundleVersion</key><string>$VERSION</string>
+    <key>CFBundleShortVersionString</key><string>$VERSION</string>
     <key>CFBundleExecutable</key><string>AutoRenew</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSUIElement</key><true/>
-    <key>NSHumanReadableCopyright</key><string>Personal use</string>
+    <key>NSHumanReadableCopyright</key><string>MIT licensed</string>
 </dict>
 </plist>
 PLIST
@@ -80,15 +87,18 @@ if ! cp -R "$APP" /Applications/AutoRenew.app 2>/dev/null; then
   sudo cp -R "$APP" /Applications/AutoRenew.app
 fi
 
-# 5. Symlink the CLI
+# 5. Install the CLI
+# Copied rather than symlinked into .build/: a symlink would break the moment the clone is moved,
+# renamed or cleaned. Re-run this script after rebuilding to refresh the installed copy.
 BIN_DIR="/opt/homebrew/bin"
 [ -d "$BIN_DIR" ] || BIN_DIR="/usr/local/bin"
 mkdir -p "$BIN_DIR" 2>/dev/null || true
-if ln -sf "$(pwd)/.build/release/autorenew-cli" "$BIN_DIR/autorenew" 2>/dev/null; then
+rm -f "$BIN_DIR/autorenew" 2>/dev/null || true
+if cp .build/release/autorenew-cli "$BIN_DIR/autorenew" 2>/dev/null; then
   echo "   CLI installed: $BIN_DIR/autorenew"
 else
-  echo "   ⚠️  Could not symlink the CLI to $BIN_DIR (permissions). Run manually:"
-  echo "      sudo ln -sf \"$(pwd)/.build/release/autorenew-cli\" \"$BIN_DIR/autorenew\""
+  echo "   ⚠️  Could not install the CLI to $BIN_DIR (permissions). Run manually:"
+  echo "      sudo cp \"$(pwd)/.build/release/autorenew-cli\" \"$BIN_DIR/autorenew\""
 fi
 
 # 6. Launch + verify
@@ -102,7 +112,7 @@ echo "==> Doctor:"
 "$BIN_DIR/autorenew" doctor || true
 
 echo
-echo "✅ AutoRenew is installed and running in your menu bar (⟳ icon)."
+echo "✅ AutoRenew $VERSION is installed and running in your menu bar (⟳ icon)."
 echo
 echo "Next steps:"
 echo "  1) Register each personal app:   autorenew add /path/to/Project.xcodeproj"
