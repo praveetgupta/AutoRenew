@@ -1,5 +1,5 @@
 #!/bin/bash
-# AutoRenew installer — run on the Mac that has Xcode + your Apple ID (the Mac mini).
+# AutoRenew installer — run on the Mac that has Xcode and your Apple ID signed in.
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 

@@ -68,7 +68,7 @@ The app is signed ad-hoc (`codesign -s -`) because it is built on your own machi
 Point AutoRenew at an `.xcodeproj`, an `.xcworkspace`, or any folder containing one:
 
 ```bash
-autorenew add ~/Projects/HabitForge/HabitForge.xcodeproj
+autorenew add ~/Projects/MyApp/MyApp.xcodeproj
 ```
 
 or use the menu-bar icon → **Add App…**. Either way AutoRenew detects the scheme, bundle identifier and development team from the project itself.
@@ -100,8 +100,8 @@ Example:
 ```
 $ autorenew list
 NAME                     SCHEME             STATE      COUNTDOWN           LAST RESULT
-HabitForge               HabitForge         fresh      6d 4h left          ✓
-DriveVerse               DriveVerse         due soon   1d 9h left          ✓
+MyApp                    MyApp              fresh      6d 4h left          ✓
+Notebook                 Notebook           due soon   1d 9h left          ✓
 ```
 
 ## Living with a free Apple ID
